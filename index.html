@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Snake Xenzia — Fixed</title>
+  <style>
+    :root{
+      --canvas-size:400px;
+      --grid:20px;
+      --accent:#0f0;
+      --dark:#0b0b0b;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-family:Inter, Arial, sans-serif;
+      background: linear-gradient(45deg,#1e3c72,#2a5298,#ff6a00);
+      background-size:400% 400%;
+      animation:bgmove 12s infinite;
+      color:#fff;
+      padding:20px;
+    }
+    @keyframes bgmove{
+      0%{background-position:0% 50%}
+      50%{background-position:100% 50%}
+      100%{background-position:0% 50%}
+    }
+
+    .container{width:100%;max-width:900px;display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
+    .panel{background:rgba(0,0,0,0.25);padding:18px;border-radius:12px;backdrop-filter:blur(6px)}
+    h1{margin:0 0 6px;font-size:20px}
+    p{margin:6px 0 12px;color:rgba(255,255,255,0.9)}
+
+    /* Canvas */
+    #gameCanvas{
+      width:var(--canvas-size);
+      height:var(--canvas-size);
+      background:#000;
+      border-radius:10px;
+      box-shadow:0 8px 30px rgba(0,0,0,0.6);
+      display:block;
+    }
+
+    /* Screens & controls */
+    .centered{display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .screen{width:100%;text-align:center}
+    .btn-main{
+      background:transparent;color:var(--accent);border:2px solid var(--accent);
+      padding:10px 14px;border-radius:8px;font-weight:600;cursor:pointer;margin-top:8px;
+    }
+    .btn-main:active{transform:translateY(1px)}
+    select{padding:8px;border-radius:8px;background:#0b0b0b;border:1px solid rgba(255,255,255,0.08);color:#fff}
+
+    /* On-screen arrow buttons */
+    #controls{
+      margin-top:14px;
+      display:none;
+      grid-template-columns:64px 64px 64px;
+      grid-template-rows:64px 64px 64px;
+      gap:6px;
+      justify-content:center;
+      align-items:center;
+      width:100%;
+      margin-left:auto;
+      margin-right:auto;
+      margin-bottom:8px;
+      display:grid;
+    }
+    .btn { background: rgba(255,255,255,0.06); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:20px; cursor:pointer; user-select:none; color:#fff; border:1px solid rgba(255,255,255,0.05) }
+    .btn:active{transform:scale(.98)}
+
+    /* Extra buttons area */
+    #extraBtns{display:none;margin-top:12px;gap:8px;display:flex;flex-wrap:wrap;justify-content:center}
+    #extraBtns .btn-main{border-color:#fff;color:#fff}
+
+    /* Right-hand info */
+    .info{padding:6px 0}
+    .stat{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed rgba(255,255,255,0.05)}
+    .small{font-size:13px;color:rgba(255,255,255,0.8)}
+    @media (max-width:900px){.container{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- LEFT: Game -->
+    <div class="panel centered">
+      <!-- Start Screen -->
+      <div id="startScreen" class="screen">
+        <h1>SNAKE XENZIA</h1>
+        <p>Select speed level and press Start</p>
+        <select id="speedSelect" aria-label="speed">
+          <option value="180">Easy</option>
+          <option value="120" selected>Medium</option>
+          <option value="70">Hard</option>
+          <option value="45">Extreme</option>
+        </select>
+        <br>
+        <button id="startBtn" class="btn-main">Start Game</button>
+      </div>
+
+      <!-- Canvas -->
+      <canvas id="gameCanvas" width="400" height="400" style="display:none;"></canvas>
+
+      <!-- On-screen arrow controls -->
+      <div id="controls" aria-hidden="true">
+        <div></div>
+        <div class="btn" id="up">▲</div>
+        <div></div>
+        <div class="btn" id="left">◀</div>
+        <div style="width:64px;height:64px;display:flex;align-items:center;justify-content:center"></div>
+        <div class="btn" id="right">▶</div>
+        <div></div>
+        <div class="btn" id="down">▼</div>
+        <div></div>
+      </div>
+
+      <!-- Extra buttons -->
+      <div id="extraBtns" style="display:none;">
+        <button class="btn-main" id="pauseBtn">Pause</button>
+        <button class="btn-main" id="resumeBtn" style="display:none">Resume</button>
+        <button class="btn-main" id="restartBtn">Restart</button>
+      </div>
+
+      <!-- End screen -->
+      <div id="endScreen" class="screen" style="display:none;margin-top:10px;">
+        <h1>Game Over</h1>
+        <h2 id="scoreText">Score: 0</h2>
+        <button class="btn-main" id="endRestart">Play Again</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Info / Controls -->
+    <div class="panel">
+      <div class="info">
+        <div class="stat"><div>Score</div><div id="scoreDisplay">0</div></div>
+        <div class="stat"><div>Speed (ms)</div><div id="speedDisplay">120</div></div>
+        <div class="stat"><div>Length</div><div id="lengthDisplay">3</div></div>
+      </div>
+
+      <div style="margin-top:14px">
+        <p class="small">Controls: Arrow keys or on-screen arrows. Pause/Resume available. Food will not spawn on the snake.</p>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // --- Core variables ---
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const grid = 20; // cell size
+  let snake = [];
+  let dx = grid, dy = 0;
+  let food = null;
+  let gameLoop = null;
+  let running = false;
+  let paused = false;
+  let score = 0;
+
+  // UI elements
+  const startBtn = document.getElementById('startBtn');
+  const speedSelect = document.getElementById('speedSelect');
+  const startScreen = document.getElementById('startScreen');
+  const controlsEl = document.getElementById('controls');
+  const extraBtns = document.getElementById('extraBtns');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resumeBtn = document.getElementById('resumeBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const endScreen = document.getElementById('endScreen');
+  const endRestart = document.getElementById('endRestart');
+
+  const scoreDisplay = document.getElementById('scoreDisplay');
+  const speedDisplay = document.getElementById('speedDisplay');
+  const lengthDisplay = document.getElementById('lengthDisplay');
+  const scoreText = document.getElementById('scoreText');
+
+  // Helpers
+  function cellCols(){ return canvas.width / grid; }
+  function cellRows(){ return canvas.height / grid; }
+
+  function randomPosition(){
+    return {
+      x: Math.floor(Math.random() * cellCols()) * grid,
+      y: Math.floor(Math.random() * cellRows()) * grid
+    };
+  }
+
+  function placeFood(){
+    // ensure food not on snake
+    let pos;
+    let tries = 0;
+    do {
+      pos = randomPosition();
+      tries++;
+      if(tries>500) break;
+    } while(snake.some(s => s.x===pos.x && s.y===pos.y));
+    food = pos;
+  }
+
+  function resetState(){
+    snake = [
+      {x:200, y:200},
+      {x:180, y:200},
+      {x:160, y:200}
+    ];
+    dx = grid; dy = 0;
+    score = 0;
+    placeFood();
+    updateUI();
+  }
+
+  function updateUI(){
+    scoreDisplay.innerText = score;
+    speedDisplay.innerText = speedSelect.value;
+    lengthDisplay.innerText = snake.length;
+  }
+
+  // --- Drawing with "realistic" look ---
+  function draw(){
+    // Walls / background with subtle gradient and border
+    const wallGrad = ctx.createLinearGradient(0,0,canvas.width,canvas.height);
+    wallGrad.addColorStop(0, '#111');
+    wallGrad.addColorStop(1, '#222');
+    ctx.fillStyle = wallGrad;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // border glow
+    ctx.save();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0,255,100,0.15)';
+    ctx.strokeRect(2,2,canvas.width-4,canvas.height-4);
+    ctx.restore();
+
+    // Food (apple-like)
+    if(food){
+      const fx = food.x + grid/2, fy = food.y + grid/2, r = grid*0.45;
+      const g = ctx.createRadialGradient(fx - r*0.25, fy - r*0.35, r*0.2, fx, fy, r);
+      g.addColorStop(0, '#fff2');
+      g.addColorStop(0.15, '#ff8888');
+      g.addColorStop(0.7, '#d00');
+      g.addColorStop(1, '#7b0000');
+      ctx.beginPath();
+      ctx.fillStyle = g;
+      ctx.arc(fx, fy, r, 0, Math.PI*2);
+      ctx.fill();
+      // little stem
+      ctx.beginPath();
+      ctx.fillStyle = '#2d5a00';
+      ctx.fillRect(fx + r*0.45 - 2, fy - r - 2, 4, 8);
+    }
+
+    // Snake: glossy gradient with stroke to look textured
+    for(let i=0;i<snake.length;i++){
+      const p = snake[i];
+      const grad = ctx.createLinearGradient(p.x, p.y, p.x + grid, p.y + grid);
+      // head brighter
+      if(i===0){
+        grad.addColorStop(0, '#bfffcc');
+        grad.addColorStop(1, '#4cbf7a');
+      } else {
+        grad.addColorStop(0, '#8ef0a7');
+        grad.addColorStop(1, '#13823b');
+      }
+      ctx.fillStyle = grad;
+      // main body rectangle slightly inset for rounded look
+      const inset = 1;
+      ctx.fillRect(p.x+inset, p.y+inset, grid-2*inset, grid-2*inset);
+      ctx.strokeStyle = '#053012';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x+inset, p.y+inset, grid-2*inset, grid-2*inset);
+    }
+  }
+
+  // --- Game logic ---
+  function update(){
+    if(!running || paused) return;
+
+    const newHead = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+    // wall collision
+    if(newHead.x < 0 || newHead.x >= canvas.width || newHead.y < 0 || newHead.y >= canvas.height){
+      return gameOver();
+    }
+    // self collision
+    if(snake.some((s, idx) => idx>0 && s.x===newHead.x && s.y===newHead.y)){
+      return gameOver();
+    }
+
+    snake.unshift(newHead);
+
+    // eat food?
+    if(food && newHead.x===food.x && newHead.y===food.y){
+      score++;
+      placeFood();
+    } else {
+      snake.pop();
+    }
+
+    updateUI();
+  }
+
+  function gameOver(){
+    stopLoop();
+    running = false;
+    // hide play area and show end screen
+    canvas.style.display = 'none';
+    controlsEl.style.display = 'none';
+    extraBtns.style.display = 'none';
+    endScreen.style.display = 'block';
+    scoreText.innerText = 'Score: ' + score;
+  }
+
+  // Interval management
+  function startLoop(){
+    stopLoop();
+    const speed = parseInt(speedSelect.value,10);
+    gameLoop = setInterval(() => {
+      update();
+      draw();
+    }, speed);
+  }
+  function stopLoop(){
+    if(gameLoop !== null){ clearInterval(gameLoop); gameLoop = null; }
+  }
+
+  // Controls
+  function changeDirection(newDx, newDy){
+    // prevent reverse
+    if(dx === -newDx && dy === -newDy) return;
+    // ignore same direction
+    if(dx === newDx && dy === newDy) return;
+    dx = newDx; dy = newDy;
+  }
+
+  // Event wiring
+  startBtn.addEventListener('click', () => {
+    // hide start screen, show canvas & controls
+    startScreen.style.display = 'none';
+    endScreen.style.display = 'none';
+    canvas.style.display = 'block';
+    controlsEl.style.display = 'grid';
+    extraBtns.style.display = 'flex';
+    resumeBtn.style.display = 'none';
+    pauseBtn.style.display = 'inline-block';
+    running = true;
+    paused = false;
+    resetState();
+    startLoop();
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    paused = true;
+    pauseBtn.style.display = 'none';
+    resumeBtn.style.display = 'inline-block';
+    stopLoop();
+  });
+  resumeBtn.addEventListener('click', () => {
+    if(!running) return;
+    paused = false;
+    resumeBtn.style.display = 'none';
+    pauseBtn.style.display = 'inline-block';
+    startLoop();
+  });
+
+  restartBtn.addEventListener('click', () => {
+    // reload full state quickly
+    paused = false;
+    running = true;
+    endScreen.style.display = 'none';
+    startScreen.style.display = 'none';
+    canvas.style.display = 'block';
+    controlsEl.style.display = 'grid';
+    extraBtns.style.display = 'flex';
+    resetState();
+    startLoop();
+  });
+
+  endRestart.addEventListener('click', () => {
+    // play again from end screen
+    paused = false;
+    running = true;
+    endScreen.style.display = 'none';
+    canvas.style.display = 'block';
+    controlsEl.style.display = 'grid';
+    extraBtns.style.display = 'flex';
+    resetState();
+    startLoop();
+  });
+
+  // Keyboard
+  window.addEventListener('keydown', (e) => {
+    if(!running) return;
+    if(e.key === 'ArrowUp') changeDirection(0, -grid);
+    if(e.key === 'ArrowDown') changeDirection(0, grid);
+    if(e.key === 'ArrowLeft') changeDirection(-grid, 0);
+    if(e.key === 'ArrowRight') changeDirection(grid, 0);
+    // optional: space to toggle pause
+    if(e.key === ' ' || e.key === 'Spacebar'){ // space toggles
+      e.preventDefault();
+      if(!running) return;
+      if(paused){ resumeBtn.click(); } else { pauseBtn.click(); }
+    }
+  });
+
+  // On-screen arrow buttons
+  document.getElementById('up').addEventListener('click', () => changeDirection(0,-grid));
+  document.getElementById('down').addEventListener('click', () => changeDirection(0,grid));
+  document.getElementById('left').addEventListener('click', () => changeDirection(-grid,0));
+  document.getElementById('right').addEventListener('click', () => changeDirection(grid,0));
+
+  // Prevent food spawn inside snake on start/resets and ensure UI reflects speed changes
+  speedSelect.addEventListener('change', () => {
+    speedDisplay.innerText = speedSelect.value;
+    if(running && !paused){
+      // restart loop with new speed
+      startLoop();
+    }
+  });
+
+  // Initialize small preview at load
+  (function initPreview(){
+    // show start screen only; draw a subtle preview on hidden canvas for visual polish
+    const previewCtx = ctx;
+    previewCtx.clearRect(0,0,canvas.width,canvas.height);
+    // draw faint snake sample when canvas hidden
+    canvas.style.display = 'none';
+    updateUI();
+  })();
+
+  // Safety: stop loop when page unloads
+  window.addEventListener('beforeunload', () => stopLoop());
+</script>
+</body>
+</html>
